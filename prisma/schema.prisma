@@ -1,0 +1,480 @@
+// Banco local em SQLite para desenvolvimento. Para produção, troque o
+// provider para "postgresql" e ajuste DATABASE_URL.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Escritorio {
+  id       String   @id @default(cuid())
+  nome     String
+  cnpj     String?
+  oab      String?
+  endereco String?
+  telefone String?
+  email    String?
+  criadoEm DateTime @default(now())
+
+  usuarios    Usuario[]
+  clientes    Cliente[]
+  processos   Processo[]
+  tarefas     Tarefa[]
+  eventos     Evento[]
+  fases       Fase[]
+  intimacoes  Intimacao[]
+  contas      ContaBancaria[]
+  categorias  CategoriaFinanceira[]
+  lancamentos Lancamento[]
+  modelos     Modelo[]
+  documentos  Documento[]
+  parceiros   Parceiro[]
+  leads       Lead[]
+  horas       RegistroHoras[]
+  audiencias  Audiencia[]
+  iniciais    Inicial[]
+  requisicoes Requisicao[]
+  emprestimos Emprestimo[]
+}
+
+model Usuario {
+  id         String   @id @default(cuid())
+  nome       String
+  email      String   @unique
+  senhaHash  String
+  oab        String?
+  papel      String   @default("ADVOGADO") // ADMIN | ADVOGADO | ESTAGIARIO | FINANCEIRO
+  ativo      Boolean  @default(true)
+  metaPontos Int      @default(0)
+  criadoEm   DateTime @default(now())
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  processos      Processo[]      @relation("Responsavel")
+  tarefas        Tarefa[]        @relation("ResponsavelTarefa")
+  tarefasCriadas Tarefa[]        @relation("CriadorTarefa")
+  eventos        Evento[]
+  horas          RegistroHoras[]
+  valorHora      Float?
+  // Quando true, o usuário só enxerga a própria carteira (processos, audiências, iniciais).
+  carteiraRestrita Boolean @default(false)
+
+  audiencias Audiencia[]
+  iniciais   Inicial[]
+}
+
+model Cliente {
+  id            String    @id @default(cuid())
+  tipo          String    @default("PF") // PF | PJ
+  nome          String
+  documento     String? // CPF ou CNPJ
+  rg            String?
+  nacionalidade String?
+  estadoCivil   String?
+  profissao     String?
+  nascimento    DateTime?
+  email         String?
+  telefone      String?
+  celular       String?
+  cep           String?
+  endereco      String?
+  numero        String?
+  complemento   String?
+  bairro        String?
+  cidade        String?
+  uf            String?
+  origem        String? // Indicação, Google, Instagram...
+  observacoes   String?
+  categoria     String    @default("CLIENTE") // CLIENTE | PARTE_CONTRARIA | TESTEMUNHA | OUTRO
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  processos   Processo[]
+  lancamentos Lancamento[]
+  documentos  Documento[]
+  lead        Lead?
+  horas       RegistroHoras[]
+  iniciais    Inicial[]
+}
+
+// Fase = coluna do funil (Marketing, Judicial...). Etapa = coluna dentro da fase.
+model Fase {
+  id           String     @id @default(cuid())
+  nome         String
+  ordem        Int        @default(0)
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  etapas       Etapa[]
+}
+
+model Etapa {
+  id        String     @id @default(cuid())
+  nome      String
+  ordem     Int        @default(0)
+  faseId    String
+  fase      Fase       @relation(fields: [faseId], references: [id], onDelete: Cascade)
+  processos Processo[]
+}
+
+model Processo {
+  id              String    @id @default(cuid())
+  titulo          String // ex.: "Ação de alimentos"
+  numero          String? // número CNJ
+  area            String? // Trabalhista, Cível, Família...
+  tipoAcao        String?
+  tribunal        String?
+  vara            String?
+  comarca         String?
+  instancia       String?
+  parteContraria  String?
+  posicaoCliente  String? // Autor | Réu | Terceiro
+  valorCausa      Float?
+  honorarios      Float?
+  honorariosExito Float? // percentual
+  status          String    @default("ATIVO") // ATIVO | SUSPENSO | ARQUIVADO | ENCERRADO
+  distribuidoEm   DateTime?
+  observacoes     String?
+  // 2ª instância / tribunais
+  recurso         String? // Apelação, Agravo de instrumento, Recurso ordinário...
+  orgaoJulgador   String? // Turma ou Câmara
+  relator         String?
+  materia         String? // matéria em discussão / o que está para ser julgado
+  situacao        String? // situação atual: concluso ao relator, pautado...
+  sessaoEm        DateTime? // sessão de julgamento
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+
+  escritorioId  String
+  escritorio    Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  clienteId     String
+  cliente       Cliente    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  responsavelId String?
+  responsavel   Usuario?   @relation("Responsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+  etapaId       String?
+  etapa         Etapa?     @relation(fields: [etapaId], references: [id], onDelete: SetNull)
+
+  andamentos  Andamento[]
+  tarefas     Tarefa[]
+  eventos     Evento[]
+  lancamentos Lancamento[]
+  intimacoes  Intimacao[]
+  documentos  Documento[]
+  horas       RegistroHoras[]
+  audiencias  Audiencia[]
+  requisicoes Requisicao[]
+  inicial     Inicial?
+}
+
+model Andamento {
+  id         String   @id @default(cuid())
+  data       DateTime @default(now())
+  descricao  String
+  processoId String
+  processo   Processo @relation(fields: [processoId], references: [id], onDelete: Cascade)
+}
+
+model Tarefa {
+  id          String    @id @default(cuid())
+  titulo      String
+  descricao   String?
+  prazo       DateTime?
+  prioridade  String    @default("NORMAL") // BAIXA | NORMAL | ALTA | URGENTE
+  importante  Boolean   @default(false)
+  tipo        String    @default("TAREFA") // TAREFA | PRAZO | AUDIENCIA | REUNIAO | PETICAO
+  pontos      Int       @default(1)
+  concluida   Boolean   @default(false)
+  concluidaEm DateTime?
+  criadoEm    DateTime  @default(now())
+
+  escritorioId  String
+  escritorio    Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  responsavelId String?
+  responsavel   Usuario?   @relation("ResponsavelTarefa", fields: [responsavelId], references: [id], onDelete: SetNull)
+  criadorId     String?
+  criador       Usuario?   @relation("CriadorTarefa", fields: [criadorId], references: [id], onDelete: SetNull)
+  processoId    String?
+  processo      Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+model Evento {
+  id        String    @id @default(cuid())
+  titulo    String
+  tipo      String    @default("COMPROMISSO") // AUDIENCIA | REUNIAO | PRAZO | COMPROMISSO
+  inicio    DateTime
+  fim       DateTime?
+  local     String?
+  descricao String?
+  criadoEm  DateTime  @default(now())
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  usuarioId    String?
+  usuario      Usuario?   @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  processoId   String?
+  processo     Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+model Intimacao {
+  id             String    @id @default(cuid())
+  dataPublicacao DateTime
+  diario         String?
+  numeroProcesso String?
+  conteudo       String
+  lida           Boolean   @default(false)
+  prazoFatal     DateTime?
+  criadoEm       DateTime  @default(now())
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  processoId   String?
+  processo     Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+model Parceiro {
+  id           String     @id @default(cuid())
+  nome         String
+  oab          String?
+  email        String?
+  telefone     String?
+  cidade       String?
+  uf           String?
+  areas        String?
+  percentual   Float? // repasse de honorários
+  observacoes  String?
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+}
+
+model ContaBancaria {
+  id                      String       @id @default(cuid())
+  nome                    String
+  saldoInicial            Float        @default(0)
+  escritorioId            String
+  escritorio              Escritorio   @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  lancamentos             Lancamento[] @relation("Conta")
+  transferenciasRecebidas Lancamento[] @relation("ContaDestino")
+  emprestimos             Emprestimo[]
+}
+
+model CategoriaFinanceira {
+  id           String       @id @default(cuid())
+  nome         String
+  tipo         String // RECEITA | DESPESA
+  escritorioId String
+  escritorio   Escritorio   @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  lancamentos  Lancamento[]
+  emprestimos  Emprestimo[]
+}
+
+model Lancamento {
+  id          String    @id @default(cuid())
+  tipo        String // RECEITA | DESPESA | TRANSFERENCIA
+  descricao   String
+  valor       Float // sempre positivo; o tipo define o sinal
+  vencimento  DateTime
+  pagamento   DateTime? // null = em aberto
+  competencia DateTime?
+  observacoes String?
+  criadoEm    DateTime  @default(now())
+
+  escritorioId   String
+  escritorio     Escritorio           @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  contaId        String
+  conta          ContaBancaria        @relation("Conta", fields: [contaId], references: [id], onDelete: Cascade)
+  contaDestinoId String?
+  contaDestino   ContaBancaria?       @relation("ContaDestino", fields: [contaDestinoId], references: [id], onDelete: SetNull)
+  categoriaId    String?
+  categoria      CategoriaFinanceira? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  clienteId      String?
+  cliente        Cliente?             @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  processoId     String?
+  processo       Processo?            @relation(fields: [processoId], references: [id], onDelete: SetNull)
+  emprestimoId   String?
+  emprestimo     Emprestimo?          @relation(fields: [emprestimoId], references: [id], onDelete: Cascade)
+  parcela        Int? // nº da parcela (empréstimos)
+  requisicao     Requisicao?
+}
+
+// Modelo de peça com variáveis {{cliente.nome}}, {{processo.numero}}...
+model Modelo {
+  id           String      @id @default(cuid())
+  titulo       String
+  categoria    String      @default("Petição") // Petição | Contrato | Procuração | Declaração | Recurso
+  area         String?
+  conteudo     String
+  criadoEm     DateTime    @default(now())
+  atualizadoEm DateTime    @updatedAt
+  escritorioId String
+  escritorio   Escritorio  @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  documentos   Documento[]
+}
+
+// Peça gerada a partir de um modelo (ou pela IA) para um cliente/processo.
+model Documento {
+  id           String     @id @default(cuid())
+  titulo       String
+  conteudo     String
+  origem       String     @default("MODELO") // MODELO | IA | MANUAL
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  modeloId     String?
+  modelo       Modelo?    @relation(fields: [modeloId], references: [id], onDelete: SetNull)
+  clienteId    String?
+  cliente      Cliente?   @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  processoId   String?
+  processo     Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+// Contato captado pelo site público.
+model Lead {
+  id            String   @id @default(cuid())
+  nome          String
+  email         String
+  telefone      String?
+  empresa       String?
+  cargo         String?
+  area          String? // área de interesse
+  mensagem      String?
+  origem        String   @default("SITE") // SITE | INDICACAO | WHATSAPP | EVENTO | OUTRO
+  status        String   @default("NOVO") // NOVO | EM_CONTATO | PROPOSTA | CONVERTIDO | DESCARTADO
+  observacoes   String?
+  consentimento Boolean  @default(false) // LGPD
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  clienteId    String?    @unique
+  cliente      Cliente?   @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+}
+
+// Lançamento de horas trabalhadas (timesheet).
+model RegistroHoras {
+  id        String   @id @default(cuid())
+  data      DateTime
+  minutos   Int
+  descricao String
+  faturavel Boolean  @default(true)
+  valorHora Float?
+  faturado  Boolean  @default(false)
+  criadoEm  DateTime @default(now())
+
+  escritorioId String
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  usuarioId    String
+  usuario      Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  clienteId    String?
+  cliente      Cliente?   @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  processoId   String?
+  processo     Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+
+// Controle de audiências.
+model Audiencia {
+  id          String   @id @default(cuid())
+  tipo        String   @default("CONCILIACAO") // CONCILIACAO | INSTRUCAO | INSTRUCAO_JULGAMENTO | UNA | JULGAMENTO | OUTRA
+  data        DateTime
+  modalidade  String   @default("PRESENCIAL") // PRESENCIAL | VIRTUAL | HIBRIDA
+  local       String? // endereço, sala ou link da videoconferência
+  status      String   @default("DESIGNADA") // DESIGNADA | REALIZADA | REDESIGNADA | CANCELADA
+  testemunhas String?
+  resultado   String?
+  observacoes String?
+  criadoEm    DateTime @default(now())
+
+  escritorioId  String
+  escritorio    Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  processoId    String
+  processo      Processo   @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  responsavelId String?
+  responsavel   Usuario?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+}
+
+// Controle das iniciais: ações a propor, até o protocolo (quando viram processo).
+model Inicial {
+  id             String    @id @default(cuid())
+  titulo         String
+  area           String?
+  parteContraria String?
+  status         String    @default("A_ELABORAR") // A_ELABORAR | AGUARDANDO_DOCUMENTOS | EM_ELABORACAO | REVISAO | PROTOCOLADA | CANCELADA
+  prazo          DateTime? // data-limite para protocolar
+  pendencias     String? // documentos e informações que faltam
+  protocoladaEm  DateTime?
+  observacoes    String?
+  criadoEm       DateTime  @default(now())
+  atualizadoEm   DateTime  @updatedAt
+
+  escritorioId  String
+  escritorio    Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  clienteId     String
+  cliente       Cliente    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  responsavelId String?
+  responsavel   Usuario?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+  processoId    String?    @unique
+  processo      Processo?  @relation(fields: [processoId], references: [id], onDelete: SetNull)
+}
+
+// RPV ou precatório de um processo. A parte do escritório entra no fluxo projetado.
+model Requisicao {
+  id          String    @id @default(cuid())
+  tipo        String    @default("RPV") // RPV | PRECATORIO
+  numero      String?
+  valor       Float // valor total requisitado
+  percentual  Float? // % do escritório pelo contrato
+  status      String    @default("A_EXPEDIR") // A_EXPEDIR | EXPEDIDA | PAGA | CANCELADA
+  expedidaEm  DateTime?
+  previsao    DateTime? // previsão de pagamento
+  pagaEm      DateTime?
+  observacoes String?
+  criadoEm    DateTime  @default(now())
+
+  escritorioId String
+  escritorio   Escritorio  @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  processoId   String
+  processo     Processo    @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  lancamentoId String?     @unique // receita gerada quando a requisição é paga
+  lancamento   Lancamento? @relation(fields: [lancamentoId], references: [id], onDelete: SetNull)
+}
+
+// Empréstimo do escritório. Gera uma despesa por parcela.
+model Emprestimo {
+  id                 String   @id @default(cuid())
+  descricao          String
+  credor             String?
+  valor              Float // valor contratado
+  taxaMensal         Float? // % ao mês, informativo
+  parcelas           Int
+  valorParcela       Float
+  primeiroVencimento DateTime
+  observacoes        String?
+  criadoEm           DateTime @default(now())
+
+  escritorioId String
+  escritorio   Escritorio           @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  contaId      String
+  conta        ContaBancaria        @relation(fields: [contaId], references: [id], onDelete: Cascade)
+  categoriaId  String?
+  categoria    CategoriaFinanceira? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  lancamentos  Lancamento[]
+}
+
+// Área pública "Apoio à Comunidade": contagem anônima de uso por ferramenta e dia.
+// Não guarda nenhum dado de quem usou (nem IP), só o total.
+model UsoFerramenta {
+  id         String   @id @default(cuid())
+  ferramenta String
+  dia        DateTime
+  total      Int      @default(0)
+
+  @@unique([ferramenta, dia])
+}
